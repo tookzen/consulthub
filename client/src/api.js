@@ -1,4 +1,5 @@
-const API_URL=import.meta.env.VITE_API_URL||'http://localhost:5000/api';
+//const API_URL=import.meta.env.VITE_API_URL||'http://localhost:5000/api';
+const API_URL=import.meta.env.VITE_API_URL ||  '/api';
 let accessToken=null;
 
 function deviceId(){let id=localStorage.getItem('consulthub_device_id');if(!id){id=crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`;localStorage.setItem('consulthub_device_id',id);}return id;}
@@ -20,7 +21,25 @@ export async function uploadBinary(path,blob,tokenOverride=null){
   const data=await response.json().catch(()=>({}));if(!response.ok){const e=new Error(data.message||'Upload failed.');e.data=data;throw e;}return data;
 }
 export const apiBase=()=>API_URL;
-export const wsUrl=()=>import.meta.env.VITE_WS_URL||'ws://localhost:5000/ws/consultations';
+//export const wsUrl=()=>import.meta.env.VITE_WS_URL||'ws://localhost:5000/ws/consultations';
+export const wsUrl = () => {
+
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL;
+  }
+
+  const protocol =
+    window.location.protocol === 'https:'
+      ? 'wss:'
+      : 'ws:';
+
+  return (
+    `${protocol}//` +
+    `${window.location.host}` +
+    `/ws/consultations`
+  );
+
+};
 
 export async function uploadRaw(path,blob,extraHeaders={}){
   const response=await fetch(`${API_URL}${path}`,{method:'PUT',credentials:'include',headers:{...deviceHeaders(),...(accessToken?{Authorization:`Bearer ${accessToken}`}:{ }),'Content-Type':blob.type||'application/octet-stream',...extraHeaders},body:blob});
