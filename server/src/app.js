@@ -2,6 +2,7 @@ require('dotenv').config();
 const http=require('http');
 const crypto=require('crypto');
 const express=require('express');
+const path=require('path');
 const cors=require('cors');
 const {rateLimit}=require('./services/security');
 const publicRouter=require('./routes/public');
@@ -55,6 +56,45 @@ app.use('/api/organizations',organizationsRouter);
 app.use('/api/billing',billingRouter);
 app.use('/api/cases',casesRouter);
 app.use('/api/recordings',recordingsRouter);
+
+/* =========================================================
+   REACT PRODUCTION FRONTEND
+   ========================================================= */
+
+const clientDist = path.resolve(
+  __dirname,
+  '../../client/dist'
+);
+
+app.use(express.static(clientDist));
+
+/*
+ * React SPA fallback.
+ *
+ * /api/* remains handled by Express API routes.
+ * /ws/* remains handled by the WebSocket upgrade handler.
+ *
+ * Everything else is sent to React.
+ */
+app.use((req, res, next) => {
+
+  if (
+    req.method !== 'GET' ||
+    req.path.startsWith('/api') ||
+    req.path.startsWith('/ws')
+  ) {
+    return next();
+  }
+
+  return res.sendFile(
+    path.join(clientDist, 'index.html')
+  );
+
+});
+
+/* =========================================================
+   ERROR HANDLER
+   ========================================================= */
 
 app.use((err,_req,res,_next)=>{
   console.error(JSON.stringify({ts:new Date().toISOString(),level:'ERROR',event:'UNHANDLED_ERROR',requestId:_req.requestId||null,message:err.message,code:err.code||null,stack:process.env.NODE_ENV==='production'?undefined:err.stack}));
