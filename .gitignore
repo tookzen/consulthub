@@ -1,0 +1,8 @@
+node_modules/
+.env
+client/dist/
+.DS_Store
+*.log
+
+server/storage/private/*
+server/storage/private-backup/*

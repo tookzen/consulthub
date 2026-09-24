@@ -1,0 +1,29 @@
+{
+  "name": "consulthub-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon src/app.js",
+    "start": "node src/app.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed": "node scripts/seed.js",
+    "test:verification": "node scripts/test-verification-adapters.js",
+    "check:syntax": "node scripts/check-syntax.js",
+    "test:domain": "node scripts/test-domain-rules.js",
+    "test:db": "node scripts/db-smoke.js",
+    "test": "npm run test:verification && npm run test:domain"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

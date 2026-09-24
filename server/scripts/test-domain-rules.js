@@ -1,0 +1,12 @@
+const assert=require('assert');
+const {workflowDefaults,roomAccessAllowed,calculatePaymentSplit,completedAppointmentReviewAllowed}=require('../src/services/domain-rules');
+assert.deepStrictEqual(workflowDefaults('MEDICAL'),{intake:'REQUIRED',clearance:'NOT_REQUIRED'});
+assert.deepStrictEqual(workflowDefaults('LEGAL'),{intake:'REQUIRED',clearance:'PENDING'});
+assert.strictEqual(roomAccessAllowed({intakeStatus:'COMPLETE',providerClearanceStatus:'NOT_REQUIRED'}),true);
+assert.strictEqual(roomAccessAllowed({intakeStatus:'COMPLETE',providerClearanceStatus:'PENDING'}),false);
+assert.strictEqual(roomAccessAllowed({intakeStatus:'REQUIRED',providerClearanceStatus:'CLEARED'}),false);
+assert.deepStrictEqual(calculatePaymentSplit(1000,{percentage:10,fixedAmount:0}),{gross:1000,platformFee:100,providerNet:900});
+assert.deepStrictEqual(calculatePaymentSplit(100,{percentage:10,fixedAmount:200}),{gross:100,platformFee:100,providerNet:0});
+assert.strictEqual(completedAppointmentReviewAllowed({status:'COMPLETED',clientUserId:'a',userId:'a'}),true);
+assert.strictEqual(completedAppointmentReviewAllowed({status:'CONFIRMED',clientUserId:'a',userId:'a'}),false);
+console.log('Domain rule tests passed.');
