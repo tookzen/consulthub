@@ -81,7 +81,7 @@ router.post('/register', rateLimit({windowMs:60_000,max:8}), asyncRoute(async (r
       );
     }
     const code=await createChallenge(client,user.id,'EMAIL_VERIFY',20);
-    await notify({userId:user.id,type:'EMAIL_VERIFICATION',title:'Verify your ConsultHub email',message:`Your verification code is ${code}. This is a development notification.`,channel:'EMAIL_DEMO',client});
+    await notify({userId:user.id,type:'EMAIL_VERIFICATION',title:'Verify your Consult Fundi email',message:`Your verification code is ${code}. This is a development notification.`,channel:'EMAIL_DEMO',client});
     await client.query('COMMIT');
     await securityEvent({userId:user.id,type:'ACCOUNT_REGISTERED',req});
     res.status(201).json({ requiresEmailVerification:true, email:user.email, ...(DEV_EXPOSE_CODES?{devVerificationCode:code}:{}) });
@@ -131,7 +131,7 @@ router.post('/login', rateLimit({windowMs:60_000,max:12,key:req=>`${req.ip}:${St
     const useSms=user.mfa_method==='SMS_DEMO'&&user.phone_verified;
     const challengeType=useSms?'MFA_SMS':'MFA_LOGIN';
     const code=await createChallenge(pool,user.id,challengeType,10);
-    await notify({userId:user.id,type:'MFA_LOGIN',title:'ConsultHub sign-in code',message:`Your sign-in code is ${code}.`,channel:useSms?'SMS_DEMO':'EMAIL_DEMO'});
+    await notify({userId:user.id,type:'MFA_LOGIN',title:'Consult Fundi sign-in code',message:`Your sign-in code is ${code}.`,channel:useSms?'SMS_DEMO':'EMAIL_DEMO'});
     return res.json({mfaRequired:true,mfaMethod:useSms?'SMS_DEMO':'EMAIL_DEMO',mfaTicket:signToken(user,{purpose:'mfa-ticket',expiresIn:'10m'}),...(DEV_EXPOSE_CODES?{devMfaCode:code}:{})});
   }
   return completeLogin(user,req,res);
@@ -179,6 +179,20 @@ router.get('/me',authenticate,asyncRoute(async(req,res)=>{
   res.json({user:publicUser(r.rows[0])});
 }));
 
+router.patch('/me',authenticate,rateLimit({windowMs:60_000,max:20}),asyncRoute(async(req,res)=>{
+  const firstName=String(req.body.firstName||'').trim();
+  const lastName=String(req.body.lastName||'').trim();
+  const phone=req.body.phone===undefined?null:String(req.body.phone||'').trim();
+  if(!firstName||!lastName)return res.status(400).json({message:'First name and last name are required.'});
+  if(firstName.length>80||lastName.length>80||String(phone||'').length>40)return res.status(400).json({message:'One or more profile values are too long.'});
+  const current=await pool.query(`SELECT * FROM users WHERE id=$1`,[req.user.sub]);
+  if(!current.rowCount)return res.status(404).json({message:'User not found.'});
+  const phoneChanged=(current.rows[0].phone||'')!==(phone||'');
+  const r=await pool.query(`UPDATE users SET first_name=$2,last_name=$3,phone=$4,phone_verified=CASE WHEN $5 THEN FALSE ELSE phone_verified END,phone_verified_at=CASE WHEN $5 THEN NULL ELSE phone_verified_at END,updated_at=NOW() WHERE id=$1 RETURNING *`,[req.user.sub,firstName,lastName,phone||null,phoneChanged]);
+  await securityEvent({userId:req.user.sub,type:'PROFILE_UPDATED',severity:'INFO',req,details:{phoneChanged}});
+  res.json({message:'Profile updated.',user:publicUser(r.rows[0])});
+}));
+
 router.post('/mfa/setup',authenticate,asyncRoute(async(req,res)=>{
   const code=await createChallenge(pool,req.user.sub,'MFA_LOGIN',15);
   await notify({userId:req.user.sub,type:'MFA_SETUP',title:'Confirm MFA setup',message:`Your MFA setup code is ${code}.`,channel:'EMAIL_DEMO'});
@@ -218,7 +232,7 @@ router.post('/phone/request',authenticate,rateLimit({windowMs:60_000,max:4}),asy
   const r=await pool.query(`SELECT * FROM users WHERE id=$1`,[req.user.sub]);
   if(!r.rowCount||!r.rows[0].phone)return res.status(400).json({message:'Add a mobile number to your account before requesting verification.'});
   const code=await createChallenge(pool,req.user.sub,'PHONE_VERIFY',10);
-  await notify({userId:req.user.sub,type:'PHONE_VERIFICATION',title:'Verify your mobile number',message:`Your ConsultHub mobile verification code is ${code}.`,channel:'SMS_DEMO'});
+  await notify({userId:req.user.sub,type:'PHONE_VERIFICATION',title:'Verify your mobile number',message:`Your Consult Fundi mobile verification code is ${code}.`,channel:'SMS_DEMO'});
   res.json({message:'Mobile verification code issued.',...(DEV_EXPOSE_CODES?{devPhoneCode:code}:{})});
 }));
 

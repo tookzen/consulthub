@@ -69,7 +69,7 @@ router.post('/identity', authenticate, authorize('PROVIDER'), asyncRoute(async (
     return res.status(400).json({ message: 'Legal name, ID/passport number, document reference and selfie reference are required.' });
   }
   if (legalFirstName.trim().toLowerCase() !== provider.first_name.toLowerCase() || legalLastName.trim().toLowerCase() !== provider.last_name.toLowerCase()) {
-    return res.status(400).json({ message: 'Legal name must match the name on your ConsultHub account.' });
+    return res.status(400).json({ message: 'Legal name must match the name on your Consult Fundi account.' });
   }
 
   const result = await verifyIdentity({ legalFirstName, legalLastName, idNumber, documentReference, selfieReference, livenessConfirmed });

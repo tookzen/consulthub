@@ -1,0 +1,189 @@
+diff --git a/client/src/App.jsx b/client/src/App.jsx
+index c1502a3..6d5afd2 100644
+--- a/client/src/App.jsx
++++ b/client/src/App.jsx
+@@ -1,5 +1,6 @@
+ import React,{useEffect,useMemo,useRef,useState}from'react';
+ import{api,apiBase,uploadBinary,uploadRaw,clearSession,getStoredUser,logoutSession,refreshSession,setSession,wsUrl,getToken}from'./api';
++import RescheduleDialog from'./RescheduleDialog';
+ 
+ const money=(v,c='ZAR')=>new Intl.NumberFormat('en-ZA',{style:'currency',currency:c,maximumFractionDigits:0}).format(Number(v||0));
+ const dt=v=>v?new Intl.DateTimeFormat('en-ZA',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v)):'—';
+@@ -66,7 +67,7 @@ function SecurityCentre({user,onUser}){
+  return <section className="page"><div className="heading"><div><div className="eyebrow">ACCOUNT SECURITY</div><h2>Security centre</h2></div></div><Notice error={error} message={message}/><div className="grid2"><div className="card"><h3>Verified contact methods</h3><p>Email: <Badge status={user.emailVerified?'VERIFIED':'PENDING'}/></p><p>Mobile: <Badge status={user.phoneVerified?'VERIFIED':'PENDING'}/></p>{!user.phoneVerified&&<><button className="btn secondary" onClick={requestPhone}>Verify mobile</button>{phoneDev&&<div className="demo-box">Development SMS code: <b>{phoneDev}</b></div>}<div className="row"><input placeholder="6-digit code" value={phoneCode} onChange={e=>setPhoneCode(e.target.value)}/><button onClick={verifyPhone}>Confirm</button></div></>}</div><div className="card"><h3>Multi-factor authentication</h3><p>{['PROVIDER','ADMIN'].includes(user.role)?'A second factor is required for this account type. ':''}{user.mfaEnabled?'Your preferred MFA method is configured.':'The development build uses one-time email/SMS codes.'}</p>{!user.mfaEnabled&&<><button className="btn" onClick={setup}>Set up MFA</button>{dev&&<div className="demo-box">Development MFA code: <b>{dev}</b></div>}<div className="row"><input placeholder="6-digit code" value={code} onChange={e=>setCode(e.target.value)}/><button className="btn secondary" onClick={confirm}>Confirm</button></div></>}</div></div><div className="grid2"><div className="card list"><h3>Active refresh sessions</h3>{sessions.map(x=><div className="case-row" key={x.id}><div><b>{x.device_name||'Browser session'}</b><small>{x.ip_address||'IP unavailable'} · last used {dt(x.last_used_at)}</small></div><button onClick={()=>revokeSession(x.id)}>Revoke</button></div>)}{!sessions.length&&<div className="empty">No active sessions.</div>}</div><div className="card list"><h3>Known devices</h3>{devices.map(x=><div className="case-row" key={x.id}><div><b>{x.device_name||x.device_id}</b><small>Last seen {dt(x.last_seen_at)} · {x.trusted?'Trusted':'Not trusted'}</small></div><button onClick={()=>revokeDevice(x.id)}>Revoke</button></div>)}{!devices.length&&<div className="empty">No devices recorded yet.</div>}</div></div><div className="mock-note">Access tokens now live only in browser memory. The HTTP-only refresh cookie restores a short-lived access token after reload. Passkeys remain a production WebAuthn task rather than a simulated security control.</div></section>
+ }
+ 
+-function Dashboard({user,setPage,openRoom,openWorkflow}){const[apps,setApps]=useState([]);const[provider,setProvider]=useState(null);const[error,setError]=useState('');const[message,setMessage]=useState('');const[reviewing,setReviewing]=useState(null);const[reviewDraft,setReviewDraft]=useState({rating:5,comment:''});async function load(){try{setApps((await api('/appointments/mine')).appointments);if(user.role==='PROVIDER')setProvider(await api('/provider/dashboard'))}catch(e){setError(e.message)}}useEffect(()=>{load()},[user.role]);async function pay(id){try{await api(`/payments/${id}/demo-pay`,{method:'POST',body:'{}'});load()}catch(e){setError(e.message)}}async function status(id,s){try{await api(`/appointments/${id}/status`,{method:'PATCH',body:JSON.stringify({status:s,reason:'Updated from dashboard'})});load()}catch(e){setError(e.message)}}async function reschedule(id){const value=prompt('New date/time in ISO format, e.g. 2026-09-25T10:00:00+02:00','');if(!value)return;try{await api(`/appointments/${id}/reschedule`,{method:'POST',body:JSON.stringify({startsAt:value})});load()}catch(e){setError(e.message)}}async function noShow(id){try{await api(`/appointments/${id}/no-show`,{method:'POST',body:'{}'});load()}catch(e){setError(e.message)}}function openReview(a){setReviewing(a.id);setReviewDraft({rating:Number(a.review_rating||5),comment:a.review_text||''});setMessage('');setError('')}async function submitReview(a){setError('');setMessage('');try{const d=await api('/reviews',{method:'POST',body:JSON.stringify({appointmentId:a.id,rating:reviewDraft.rating,reviewText:reviewDraft.comment})});setMessage(d.message||'Review submitted.');setReviewing(null);await load()}catch(e){setError(e.message)}}return <section className="page"><div className="heading"><div><div className="eyebrow">DASHBOARD</div><h2>Hello, {user.firstName}</h2></div>{user.role==='PROVIDER'&&<button className="btn secondary" onClick={()=>setPage('calendar')}>Manage calendar</button>}</div><Notice error={error} message={message}/>{provider&&<div className="stats"><div><small>Upcoming</small><b>{provider.stats.upcoming}</b></div><div><small>Awaiting payment</small><b>{provider.stats.awaiting_payment}</b></div><div><small>Completed</small><b>{provider.stats.completed}</b></div><div><small>Paid value</small><b>{money(provider.stats.gross_paid)}</b></div></div>}<div className="card list"><h3>Appointments</h3>{apps.map(a=><div className="appointment-block" key={a.id}><div className="appointment"><div><b>{a.service_name}</b><span>{user.role==='PROVIDER'?`${a.client_first_name} ${a.client_last_name}`:`${a.provider_first_name} ${a.provider_last_name}`}</span><small>{dt(a.starts_at)} · {a.booking_reference||''}</small>{user.role==='CLIENT'&&a.review_id&&<span className="submitted-rating"><Stars value={a.review_rating}/><small><Badge status={a.review_moderation_status}/></small></span>}</div><div className="right"><Badge status={a.status}/><Badge status={a.payment_status}/><div className="row-actions"><button onClick={()=>openWorkflow(a.id)}>Workflow</button>{user.role==='CLIENT'&&a.status==='PENDING'&&<button onClick={()=>pay(a.id)}>Pay demo</button>}{a.status==='CONFIRMED'&&<button onClick={()=>openRoom(a.id)}>Join room</button>}{['PENDING','CONFIRMED'].includes(a.status)&&<><button onClick={()=>reschedule(a.id)}>Reschedule</button><button onClick={()=>status(a.id,'CANCELLED')}>Cancel</button></>}{a.status==='CONFIRMED'&&<button onClick={()=>noShow(a.id)}>Report no-show</button>}{user.role==='PROVIDER'&&a.status==='CONFIRMED'&&<button onClick={()=>status(a.id,'COMPLETED')}>Complete</button>}{user.role==='CLIENT'&&a.status==='COMPLETED'&&<button onClick={()=>openReview(a)}>{a.review_id?'Edit rating':'Rate consultation'}</button>}</div></div></div>{user.role==='CLIENT'&&reviewing===a.id&&<div className="review-editor"><div className="review-editor-head"><div><b>Rate your consultation</b><p>Your feedback can help other clients. Do not include private medical, legal, financial or other sensitive information in a public comment.</p></div><StarInput value={reviewDraft.rating} onChange={rating=>setReviewDraft({...reviewDraft,rating})}/></div><label>Comment (optional)<textarea maxLength="2000" value={reviewDraft.comment} onChange={e=>setReviewDraft({...reviewDraft,comment:e.target.value})} placeholder="Share your experience with the professional and service. Avoid confidential details."/><small>{reviewDraft.comment.length}/2000 characters</small></label><div className="row-actions review-actions"><button className="btn small" onClick={()=>submitReview(a)}>Submit review</button><button className="btn secondary small" onClick={()=>setReviewing(null)}>Cancel</button></div><small className="muted">Reviews are moderated before appearing publicly.</small></div>}</div>)}{!apps.length&&<div className="empty">No appointments.</div>}</div></section>}
++function Dashboard({user,setPage,openRoom,openWorkflow}){const[apps,setApps]=useState([]);const[provider,setProvider]=useState(null);const[error,setError]=useState('');const[message,setMessage]=useState('');const[reviewing,setReviewing]=useState(null);const[reviewDraft,setReviewDraft]=useState({rating:5,comment:''});const[rescheduling,setRescheduling]=useState(null);async function load(){try{setApps((await api('/appointments/mine')).appointments);if(user.role==='PROVIDER')setProvider(await api('/provider/dashboard'))}catch(e){setError(e.message)}}useEffect(()=>{load()},[user.role]);async function pay(id){try{await api(`/payments/${id}/demo-pay`,{method:'POST',body:'{}'});load()}catch(e){setError(e.message)}}async function status(id,s){try{await api(`/appointments/${id}/status`,{method:'PATCH',body:JSON.stringify({status:s,reason:'Updated from dashboard'})});load()}catch(e){setError(e.message)}}async function noShow(id){try{await api(`/appointments/${id}/no-show`,{method:'POST',body:'{}'});load()}catch(e){setError(e.message)}}function openReview(a){setReviewing(a.id);setReviewDraft({rating:Number(a.review_rating||5),comment:a.review_text||''});setMessage('');setError('')}async function submitReview(a){setError('');setMessage('');try{const d=await api('/reviews',{method:'POST',body:JSON.stringify({appointmentId:a.id,rating:reviewDraft.rating,reviewText:reviewDraft.comment})});setMessage(d.message||'Review submitted.');setReviewing(null);await load()}catch(e){setError(e.message)}}return <section className="page"><div className="heading"><div><div className="eyebrow">DASHBOARD</div><h2>Hello, {user.firstName}</h2></div>{user.role==='PROVIDER'&&<button className="btn secondary" onClick={()=>setPage('calendar')}>Manage calendar</button>}</div><Notice error={error} message={message}/>{provider&&<div className="stats"><div><small>Upcoming</small><b>{provider.stats.upcoming}</b></div><div><small>Awaiting payment</small><b>{provider.stats.awaiting_payment}</b></div><div><small>Completed</small><b>{provider.stats.completed}</b></div><div><small>Paid value</small><b>{money(provider.stats.gross_paid)}</b></div></div>}<div className="card list"><h3>Appointments</h3>{apps.map(a=><div className="appointment-block" key={a.id}><div className="appointment"><div><b>{a.service_name}</b><span>{user.role==='PROVIDER'?`${a.client_first_name} ${a.client_last_name}`:`${a.provider_first_name} ${a.provider_last_name}`}</span><small>{dt(a.starts_at)} · {a.booking_reference||''}</small>{user.role==='CLIENT'&&a.review_id&&<span className="submitted-rating"><Stars value={a.review_rating}/><small><Badge status={a.review_moderation_status}/></small></span>}</div><div className="right"><Badge status={a.status}/><Badge status={a.payment_status}/><div className="row-actions"><button onClick={()=>openWorkflow(a.id)}>Workflow</button>{user.role==='CLIENT'&&a.status==='PENDING'&&<button onClick={()=>pay(a.id)}>Pay demo</button>}{a.status==='CONFIRMED'&&<button onClick={()=>openRoom(a.id)}>Join room</button>}{['PENDING','CONFIRMED'].includes(a.status)&&<><button onClick={()=>{setError('');setMessage('');setRescheduling(a)}}>Reschedule</button><button onClick={()=>status(a.id,'CANCELLED')}>Cancel</button></>}{a.status==='CONFIRMED'&&<button onClick={()=>noShow(a.id)}>Report no-show</button>}{user.role==='PROVIDER'&&a.status==='CONFIRMED'&&<button onClick={()=>status(a.id,'COMPLETED')}>Complete</button>}{user.role==='CLIENT'&&a.status==='COMPLETED'&&<button onClick={()=>openReview(a)}>{a.review_id?'Edit rating':'Rate consultation'}</button>}</div></div></div>{user.role==='CLIENT'&&reviewing===a.id&&<div className="review-editor"><div className="review-editor-head"><div><b>Rate your consultation</b><p>Your feedback can help other clients. Do not include private medical, legal, financial or other sensitive information in a public comment.</p></div><StarInput value={reviewDraft.rating} onChange={rating=>setReviewDraft({...reviewDraft,rating})}/></div><label>Comment (optional)<textarea maxLength="2000" value={reviewDraft.comment} onChange={e=>setReviewDraft({...reviewDraft,comment:e.target.value})} placeholder="Share your experience with the professional and service. Avoid confidential details."/><small>{reviewDraft.comment.length}/2000 characters</small></label><div className="row-actions review-actions"><button className="btn small" onClick={()=>submitReview(a)}>Submit review</button><button className="btn secondary small" onClick={()=>setReviewing(null)}>Cancel</button></div><small className="muted">Reviews are moderated before appearing publicly.</small></div>}</div>)}{!apps.length&&<div className="empty">No appointments.</div>}</div>{rescheduling&&<RescheduleDialog appointment={rescheduling} user={user} onClose={()=>setRescheduling(null)} onDone={async()=>{setRescheduling(null);setMessage('Appointment rescheduled successfully. Both participants have been notified.');await load()}}/>}</section>}
+ 
+ function CalendarManager(){
+  const[data,setData]=useState(null);const[settings,setSettings]=useState({});const[windows,setWindows]=useState([]);const[block,setBlock]=useState({startsAt:'',endsAt:'',reason:''});const[connections,setConnections]=useState([]);const[message,setMessage]=useState('');const[error,setError]=useState('');
+diff --git a/client/src/RescheduleDialog.jsx b/client/src/RescheduleDialog.jsx
+new file mode 100644
+index 0000000..a1c1fe1
+--- /dev/null
++++ b/client/src/RescheduleDialog.jsx
+@@ -0,0 +1,155 @@
++import React,{useEffect,useMemo,useState}from'react';
++import{api}from'./api';
++import'./reschedule.css';
++
++const pad=n=>String(n).padStart(2,'0');
++const dateInputValue=value=>{
++  const d=value?new Date(value):new Date();
++  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
++};
++const datePlus=days=>{
++  const d=new Date();
++  d.setHours(12,0,0,0);
++  d.setDate(d.getDate()+days);
++  return dateInputValue(d);
++};
++const dateLabel=value=>new Intl.DateTimeFormat('en-ZA',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}).format(new Date(value));
++const timeLabel=value=>new Intl.DateTimeFormat('en-ZA',{hour:'2-digit',minute:'2-digit'}).format(new Date(value));
++const fullLabel=value=>new Intl.DateTimeFormat('en-ZA',{weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
++
++function SlotGroup({title,slots,selected,onSelect}){
++  if(!slots.length)return null;
++  return <div className="reschedule-slot-group">
++    <div className="reschedule-slot-heading">{title}</div>
++    <div className="reschedule-slots">
++      {slots.map(slot=><button type="button" key={slot} className={`reschedule-slot ${selected===slot?'selected':''}`} onClick={()=>onSelect(slot)}>{timeLabel(slot)}</button>)}
++    </div>
++  </div>;
++}
++
++export default function RescheduleDialog({appointment,user,onClose,onDone}){
++  const[date,setDate]=useState(dateInputValue(appointment.starts_at));
++  const[slots,setSlots]=useState([]);
++  const[selected,setSelected]=useState('');
++  const[loading,setLoading]=useState(false);
++  const[saving,setSaving]=useState(false);
++  const[error,setError]=useState('');
++
++  const counterpart=user.role==='PROVIDER'
++    ?`${appointment.client_first_name} ${appointment.client_last_name}`
++    :`${appointment.provider_first_name} ${appointment.provider_last_name}`;
++
++  useEffect(()=>{
++    const onKey=e=>{if(e.key==='Escape'&&!saving)onClose()};
++    window.addEventListener('keydown',onKey);
++    return()=>window.removeEventListener('keydown',onKey);
++  },[saving,onClose]);
++
++  useEffect(()=>{
++    let active=true;
++    setSelected('');
++    setError('');
++    setLoading(true);
++    api(`/providers/${appointment.provider_id}/slots?date=${date}&serviceId=${appointment.service_id}`)
++      .then(d=>{if(active)setSlots(d.slots||[])})
++      .catch(e=>{if(active){setSlots([]);setError(e.message)}})
++      .finally(()=>{if(active)setLoading(false)});
++    return()=>{active=false};
++  },[appointment.provider_id,appointment.service_id,date]);
++
++  const groups=useMemo(()=>{
++    const by={Morning:[],Afternoon:[],Evening:[]};
++    for(const slot of slots){
++      const hour=new Date(slot).getHours();
++      if(hour<12)by.Morning.push(slot);
++      else if(hour<17)by.Afternoon.push(slot);
++      else by.Evening.push(slot);
++    }
++    return by;
++  },[slots]);
++
++  async function confirm(){
++    if(!selected||saving)return;
++    setSaving(true);setError('');
++    try{
++      await api(`/appointments/${appointment.id}/reschedule`,{method:'POST',body:JSON.stringify({startsAt:selected})});
++      await onDone(selected);
++    }catch(e){
++      setError(e.message);
++      setSaving(false);
++    }
++  }
++
++  const quickDates=[
++    ['Today',datePlus(0)],
++    ['Tomorrow',datePlus(1)],
++    ['+2 days',datePlus(2)],
++    ['+7 days',datePlus(7)]
++  ];
++
++  return <div className="reschedule-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!saving)onClose()}}>
++    <section className="reschedule-dialog" role="dialog" aria-modal="true" aria-labelledby="reschedule-title">
++      <div className="reschedule-header">
++        <div>
++          <div className="reschedule-eyebrow">RESCHEDULE APPOINTMENT</div>
++          <h3 id="reschedule-title">Choose a better time</h3>
++          <p>{user.role==='PROVIDER'?`Select a new available time for ${counterpart}.`:`Select another available time with ${counterpart}.`}</p>
++        </div>
++        <button type="button" className="reschedule-close" aria-label="Close reschedule dialog" onClick={onClose} disabled={saving}>×</button>
++      </div>
++
++      <div className="reschedule-current">
++        <div>
++          <span>Current appointment</span>
++          <b>{fullLabel(appointment.starts_at)}</b>
++          <small>{appointment.service_name} · {appointment.booking_reference||'No booking reference'}</small>
++        </div>
++        <div className="reschedule-state">
++          <span className={`reschedule-pill ${String(appointment.status||'').toLowerCase()}`}>{appointment.status}</span>
++          <span className={`reschedule-pill ${String(appointment.payment_status||'').toLowerCase()}`}>{appointment.payment_status}</span>
++        </div>
++      </div>
++
++      <div className="reschedule-body">
++        <div className="reschedule-step">
++          <div className="reschedule-step-number">1</div>
++          <div className="reschedule-step-content">
++            <div className="reschedule-step-title"><b>Select a date</b><span>Availability is checked against the provider calendar.</span></div>
++            <div className="reschedule-quick-dates">
++              {quickDates.map(([label,value])=><button type="button" key={label} className={date===value?'active':''} onClick={()=>setDate(value)}><b>{label}</b><span>{new Intl.DateTimeFormat('en-ZA',{day:'2-digit',month:'short'}).format(new Date(`${value}T12:00:00`))}</span></button>)}
++            </div>
++            <label className="reschedule-date-field">Or choose another date<input type="date" value={date} min={datePlus(0)} onChange={e=>setDate(e.target.value)}/></label>
++          </div>
++        </div>
++
++        <div className="reschedule-step">
++          <div className="reschedule-step-number">2</div>
++          <div className="reschedule-step-content">
++            <div className="reschedule-step-title"><b>Select a time</b><span>{dateLabel(`${date}T12:00:00`)}</span></div>
++            {loading?<div className="reschedule-loading"><span></span>Checking available times…</div>:<>
++              {error&&<div className="reschedule-error">{error}</div>}
++              {!error&&!slots.length&&<div className="reschedule-empty"><b>No available times on this date.</b><span>Try another day using the date options above.</span></div>}
++              <SlotGroup title="Morning" slots={groups.Morning} selected={selected} onSelect={setSelected}/>
++              <SlotGroup title="Afternoon" slots={groups.Afternoon} selected={selected} onSelect={setSelected}/>
++              <SlotGroup title="Evening" slots={groups.Evening} selected={selected} onSelect={setSelected}/>
++            </>}
++          </div>
++        </div>
++
++        {selected&&<div className="reschedule-preview">
++          <div className="reschedule-preview-icon">✓</div>
++          <div className="reschedule-preview-copy">
++            <span>Review the change</span>
++            <div className="reschedule-change-row"><div><small>FROM</small><b>{fullLabel(appointment.starts_at)}</b></div><span>→</span><div><small>TO</small><b>{fullLabel(selected)}</b></div></div>
++            <p>{appointment.status==='CONFIRMED'?'The appointment remains confirmed.':'The appointment remains pending and its payment hold will refresh.'} Both participants will receive an updated notification.</p>
++          </div>
++        </div>}
++      </div>
++
++      <div className="reschedule-footer">
++        <button type="button" className="reschedule-cancel" onClick={onClose} disabled={saving}>Keep current time</button>
++        <button type="button" className="reschedule-confirm" onClick={confirm} disabled={!selected||loading||saving}>{saving?'Updating appointment…':'Confirm new time'}</button>
++      </div>
++    </section>
++  </div>;
++}
+diff --git a/client/src/reschedule.css b/client/src/reschedule.css
+new file mode 100644
+index 0000000..baea700
+--- /dev/null
++++ b/client/src/reschedule.css
+@@ -0,0 +1,2 @@
++.reschedule-overlay{position:fixed;inset:0;z-index:1000;background:rgba(16,34,43,.58);backdrop-filter:blur(4px);display:grid;place-items:center;padding:22px;animation:rescheduleFade .16s ease-out}.reschedule-dialog{width:min(760px,100%);max-height:calc(100vh - 44px);overflow:auto;background:#fff;border-radius:20px;box-shadow:0 28px 80px rgba(5,28,39,.28);border:1px solid rgba(255,255,255,.7);animation:rescheduleLift .18s ease-out}.reschedule-header{display:flex;justify-content:space-between;gap:22px;padding:24px 26px 18px;border-bottom:1px solid #e8edef}.reschedule-header h3{margin:2px 0 5px;font-size:25px;color:#183542}.reschedule-header p{margin:0;color:#6c7d86;font-size:14px}.reschedule-eyebrow{font-size:10px;letter-spacing:.12em;font-weight:900;color:#0f766e}.reschedule-close{flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:1px solid #dbe3e6;background:#fff;color:#60727c;font-size:25px;line-height:1;cursor:pointer}.reschedule-close:hover{background:#f4f7f8}.reschedule-current{margin:18px 26px 0;padding:15px 17px;border:1px solid #dfe8ea;border-radius:13px;background:#f7fafb;display:flex;justify-content:space-between;gap:18px;align-items:center}.reschedule-current>div:first-child{display:flex;flex-direction:column;gap:3px}.reschedule-current span{color:#71828c;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}.reschedule-current b{font-size:15px;color:#203b48}.reschedule-current small{color:#71828c}.reschedule-state{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.reschedule-pill{font-size:10px!important;padding:6px 9px;border-radius:999px;background:#edf2f3;color:#5d6e77!important}.reschedule-pill.confirmed,.reschedule-pill.paid{background:#e4f6ef;color:#0d6d5f!important}.reschedule-pill.pending{background:#fff2d7;color:#8a631d!important}.reschedule-body{padding:10px 26px 4px}.reschedule-step{display:grid;grid-template-columns:34px 1fr;gap:13px;padding:18px 0;border-bottom:1px solid #edf1f2}.reschedule-step-number{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#e5f4f1;color:#0e6d63;font-weight:900;font-size:12px}.reschedule-step-content{min-width:0}.reschedule-step-title{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:12px}.reschedule-step-title b{font-size:14px;color:#28414d}.reschedule-step-title span{font-size:12px;color:#7c8c95}.reschedule-quick-dates{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.reschedule-quick-dates button{border:1px solid #d8e2e5;border-radius:10px;background:#fff;padding:10px 7px;display:flex;flex-direction:column;gap:2px;color:#334e5b;cursor:pointer}.reschedule-quick-dates button:hover{border-color:#86bcb6;background:#f5fbf9}.reschedule-quick-dates button.active{border-color:#0f766e;background:#e8f6f2;box-shadow:0 0 0 2px rgba(15,118,110,.08)}.reschedule-quick-dates button b{font-size:12px}.reschedule-quick-dates button span{font-size:10px;color:#7b8b94}.reschedule-date-field{margin:11px 0 0;font-size:11px!important;color:#6e808a!important}.reschedule-date-field input{margin-top:2px}.reschedule-slot-group{margin-top:14px}.reschedule-slot-heading{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#819099;font-weight:900;margin-bottom:7px}.reschedule-slots{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.reschedule-slot{border:1px solid #d5e0e3;background:#fff;color:#314c58;border-radius:9px;padding:9px 5px;font-weight:800;cursor:pointer}.reschedule-slot:hover{border-color:#78b1ab;background:#f4faf8}.reschedule-slot.selected{background:#0f766e;color:#fff;border-color:#0f766e;box-shadow:0 4px 12px rgba(15,118,110,.18)}.reschedule-loading,.reschedule-empty,.reschedule-error{border-radius:10px;padding:14px;font-size:12px}.reschedule-loading{background:#f5f8f9;color:#667983;display:flex;align-items:center;gap:9px}.reschedule-loading span{width:15px;height:15px;border:2px solid #c7d7da;border-top-color:#0f766e;border-radius:50%;animation:rescheduleSpin .7s linear infinite}.reschedule-empty{background:#f7f9fa;display:flex;flex-direction:column;gap:3px;color:#6c7d86}.reschedule-empty b{color:#405a66}.reschedule-error{background:#fff0f0;color:#983f3f}.reschedule-preview{margin:17px 0 16px;border:1px solid #bcded7;background:#f1faf7;border-radius:13px;padding:15px;display:grid;grid-template-columns:32px 1fr;gap:11px}.reschedule-preview-icon{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#0f766e;color:#fff;font-weight:900}.reschedule-preview-copy>span{font-size:11px;color:#0f6d63;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.reschedule-change-row{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;margin-top:8px}.reschedule-change-row>span{color:#0f766e;font-size:18px}.reschedule-change-row div{display:flex;flex-direction:column;gap:2px}.reschedule-change-row small{color:#799098;font-weight:900;font-size:9px}.reschedule-change-row b{font-size:12px;color:#28434e}.reschedule-preview p{margin:9px 0 0;color:#60747d;font-size:11px;line-height:1.45}.reschedule-footer{display:flex;justify-content:flex-end;gap:9px;padding:17px 26px 22px;border-top:1px solid #e8edef;background:#fbfcfc;border-radius:0 0 20px 20px}.reschedule-cancel,.reschedule-confirm{border-radius:10px;padding:11px 15px;font-weight:900;cursor:pointer}.reschedule-cancel{border:1px solid #d8e1e4;background:#fff;color:#536873}.reschedule-confirm{border:1px solid #0f766e;background:#0f766e;color:#fff;min-width:150px}.reschedule-confirm:disabled,.reschedule-cancel:disabled,.reschedule-close:disabled{opacity:.5;cursor:not-allowed}@keyframes rescheduleFade{from{opacity:0}to{opacity:1}}@keyframes rescheduleLift{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:none}}@keyframes rescheduleSpin{to{transform:rotate(360deg)}}
++@media(max-width:700px){.reschedule-overlay{padding:0;align-items:end}.reschedule-dialog{max-height:94vh;border-radius:20px 20px 0 0}.reschedule-header,.reschedule-body,.reschedule-footer{padding-left:18px;padding-right:18px}.reschedule-current{margin-left:18px;margin-right:18px;align-items:flex-start;flex-direction:column}.reschedule-state{justify-content:flex-start}.reschedule-quick-dates{grid-template-columns:repeat(2,1fr)}.reschedule-slots{grid-template-columns:repeat(3,minmax(0,1fr))}.reschedule-change-row{grid-template-columns:1fr}.reschedule-change-row>span{transform:rotate(90deg);justify-self:start}.reschedule-footer{position:sticky;bottom:0}.reschedule-cancel,.reschedule-confirm{flex:1}.reschedule-step-title{align-items:flex-start;flex-direction:column;gap:3px}}
